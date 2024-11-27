@@ -174,12 +174,11 @@ class ArducamUtils(object):
         return fcntl.ioctl(self.vd, VIDIOC_W_DEV, dev)
 
     def get_device_info(self):
-        fw_sensor_id = self.read_dev(ArducamUtils.FIRMWARE_SENSOR_ID_REG)
-        sensor_id = self.read_dev(ArducamUtils.SENSOR_ID_REG)
-        fw_version = self.read_dev(ArducamUtils.FIRMWARE_VERSION_REG)
-        serial_number = self.read_dev(ArducamUtils.SERIAL_NUMBER_REG)
-
-        pass
+        _, fw_sensor_id = self.read_dev(ArducamUtils.FIRMWARE_SENSOR_ID_REG)
+        _, sensor_id = self.read_dev(ArducamUtils.SENSOR_ID_REG)
+        _, fw_version = self.read_dev(ArducamUtils.FIRMWARE_VERSION_REG)
+        _, serial_number = self.read_dev(ArducamUtils.SERIAL_NUMBER_REG)
+        return fw_sensor_id, sensor_id, fw_version, serial_number
 
     def convert(self, frame):
         if self.convert2rgb == 1:

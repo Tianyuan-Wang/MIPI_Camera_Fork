@@ -99,10 +99,8 @@ def pixelformat(string):
         return fourcc(string[0], string[1], string[2], string[3])
 
 def show_info(arducam_utils):
-    _, firmware_version = arducam_utils.read_dev(ArducamUtils.FIRMWARE_VERSION_REG)
-    _, sensor_id = arducam_utils.read_dev(ArducamUtils.FIRMWARE_SENSOR_ID_REG)
-    _, serial_number = arducam_utils.read_dev(ArducamUtils.SERIAL_NUMBER_REG)
-    print("Firmware Version: {}".format(firmware_version))
+    _, sensor_id, firmware_version, serial_number = arducam_utils.get_device_info()
+    print("\nFirmware Version: {}".format(firmware_version))
     print("Sensor ID: 0x{:04X}".format(sensor_id))
     print("Serial Number: 0x{:08X}".format(serial_number))
 
