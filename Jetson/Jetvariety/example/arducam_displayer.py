@@ -10,6 +10,7 @@ import array
 import fcntl
 import os
 import argparse
+from ArduCamUtilities import ArduCamUtilities
 try:
     from utils import ArducamUtils
 except ImportError as e:
@@ -51,18 +52,44 @@ def display(cap, arducam_utils, fps = False):
     start_time = datetime.now()
     frame_count = 0
     start = time.time()
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     while True:
-        ret, frame = cap.read()
+        ret, frame_raw = cap.read()
+        if not ret:
+            print("Failed to grab a frame.")
+            break
         counter += 1
         frame_count += 1
 
-        if arducam_utils.convert2rgb == 0:
-            w = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-            h = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-            frame = frame.reshape(int(h), int(w))
+                        # # Step 1: Convert the RG10-packed data to a usable format
+                        # # Assuming RG10 stores 10-bit data in 16-bit format (little-endian)
+                        # width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                        # height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                        #
+                        # frame_bytes = frame_raw.tobytes()
+                        #
+                        # # frame_16bit = np.frombuffer(frame_raw, dtype=np.uint16).reshape((height, width))
+                        # frame_16bit = np.frombuffer(frame_bytes, dtype='<u2').reshape((height, width))
+                        #
+                        # # Extract the 10-bit data (if necessary)
+                        # frame_10bit = (frame_16bit & 0x03FF).astype(np.uint16)  # Keep only 10 bits
+                        #
+                        # # Step 2: Convert to 8-bit for display purposes
+                        # frame_8bit = (frame_10bit >> 2).astype(np.uint8)
+                        #
+                        # # Step 3: Demosaic the Bayer pattern to BGR
+                        # bgr_image = cv2.cvtColor(frame_8bit, cv2.COLOR_BAYER_RG2BGR)
+                        #
+                        # # Step 4: Display the processed frame
+                        # bgr_image = resize(bgr_image, 1280.0)
+                        # cv2.imshow("RG10 Camera Feed", bgr_image)
 
-        frame = arducam_utils.convert(frame)
-        
+
+
+        frame_2d = frame_raw.reshape(height, width) if arducam_utils.convert2rgb == 0 else frame_raw
+        frame = arducam_utils.convert(frame_2d)
+
         frame = resize(frame, 1280.0)
         # display
         cv2.imshow("Arducam", frame)
@@ -85,7 +112,6 @@ def display(cap, arducam_utils, fps = False):
     print ("Average time between frames: " + str(avgtime))
     print ("Average FPS: " + str(1/avgtime))
 
-
 def fourcc(a, b, c, d):
     return ord(a) | (ord(b) << 8) | (ord(c) << 16) | (ord(d) << 24)
 
@@ -104,47 +130,46 @@ def show_info(arducam_utils):
     print("Sensor ID: 0x{:04X}".format(sensor_id))
     print("Serial Number: 0x{:08X}".format(serial_number))
 
-if __name__ == "__main__":
+def process_arguments():
     parser = argparse.ArgumentParser(description='Arducam Jetson Nano MIPI Camera Displayer.')
 
-    parser.add_argument('-d', '--device', default=0, type=int, nargs='?',
-                        help='/dev/videoX default is 0')
-    parser.add_argument('-f', '--pixelformat', type=pixelformat,
-                        help="set pixelformat")
-    parser.add_argument('--width', type=lambda x: int(x,0),
-                        help="set width of image")
-    parser.add_argument('--height', type=lambda x: int(x,0),
-                        help="set height of image")
+    parser.add_argument('--device', default=0, type=int, nargs='?', help='/dev/videoX default is 0')
+    parser.add_argument('--pixelformat', type=pixelformat, help="set pixelformat")
+    parser.add_argument('--width', type=lambda x: int(x, 0), help="set width of image")
+    parser.add_argument('--height', type=lambda x: int(x, 0), help="set height of image")
     parser.add_argument('--fps', action='store_true', help="display fps")
-    parser.add_argument('--channel', type=int, default=-1, nargs='?',
-                        help="When using Camarray's single channel, use this parameter to switch channels. \
-                            (E.g. ov9781/ov9281 Quadrascopic Camera Bundle Kit)")
+    parser.add_argument('--channel', default=-1, type=int, nargs='?', help="When using Camarray's single channel, use this parameter to switch channels. (E.g. ov9781/ov9281 Quadrascopic Camera Bundle Kit)")
 
-    args = parser.parse_args()
+    args_local = parser.parse_args()
+    return args_local
+
+if __name__ == "__main__":
+    args = process_arguments()
+    print("\nProgram starting... User input arguments are: " + str(vars(args)))
+
+    arducam_utils = ArduCamUtilities(args.device)
 
     # open camera
     cap = cv2.VideoCapture(args.device, cv2.CAP_V4L2)
-
-    # set pixel format
+    # set pixel format, width, height, etc.
     if args.pixelformat != None:
         if not cap.set(cv2.CAP_PROP_FOURCC, args.pixelformat):
             print("Failed to set pixel format.")
+    if args.width != None:
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, args.width)
+    if args.height != None:
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, args.height)
+    if args.channel in range(0, 4):
+        arducam_utils.write_dev(ArducamUtils.CHANNEL_SWITCH_REG, args.channel)
 
-    arducam_utils = ArducamUtils(args.device)
+    # ''' Set the FourCC to RG10 '''
+    # cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'RG10'))
+    # print("\nFourCC 设置成功") if int(cap.get(cv2.CAP_PROP_FOURCC)) == cv2.VideoWriter_fourcc(*'RG10') else print("FourCC 设置失败")
 
-    show_info(arducam_utils)
+    arducam_utils.show_camera_info()
     # turn off RGB conversion
     if arducam_utils.convert2rgb == 0:
         cap.set(cv2.CAP_PROP_CONVERT_RGB, arducam_utils.convert2rgb)
-    # set width
-    if args.width != None:
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, args.width)
-    # set height
-    if args.height != None:
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, args.height)
-
-    if args.channel in range(0, 4):
-        arducam_utils.write_dev(ArducamUtils.CHANNEL_SWITCH_REG, args.channel)
 
     # begin display
     display(cap, arducam_utils, args.fps)

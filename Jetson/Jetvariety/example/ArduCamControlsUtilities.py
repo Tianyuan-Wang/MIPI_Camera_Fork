@@ -143,3 +143,10 @@ class ArduCamControlUtilities(object):
         _, fw_version = self.read_dev(ArduCamControlUtilities.FIRMWARE_VERSION_REG)
         _, serial_number = self.read_dev(ArduCamControlUtilities.SERIAL_NUMBER_REG)
         return fw_sensor_id, sensor_id, fw_version, serial_number
+
+    def show_camera_info(self):
+        _, sensor_id, firmware_version, serial_number = self.get_device_info()
+        print("\nV4L2:")
+        print("Firmware Version: {}".format(firmware_version))
+        print("Sensor ID: 0x{:04X}".format(sensor_id))
+        print("Serial Number: 0x{:08X}".format(serial_number))

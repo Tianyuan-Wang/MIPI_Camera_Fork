@@ -64,7 +64,7 @@ class ArduCamUtilities(ArduCamControlUtilities):
 
         return frame
 
-    def get_pixelformat(self):
+    def get_current_pixelformat(self):
         fmt = v4l2.v4l2_format()
         fmt.type = v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE
         ret = fcntl.ioctl(self.vd, v4l2.VIDIOC_G_FMT, fmt)
@@ -84,68 +84,59 @@ class ArduCamUtilities(ArduCamControlUtilities):
         ''' If the current format is not the target one, attempt to set it explicitly '''
         print("\nV4L2:")
         if fmt.fmt.pix.pixelformat != target_pixfmt:
-            print(f"Current pixel format is 0x{fmt.fmt.pix.pixelformat:08x}, changing to 0x{target_pixfmt:08x}")
+            print(f"Current pixel format is 0x{fmt.fmt.pix.pixelformat:08x} ({get_v4l2_key_name(fmt.fmt.pix.pixelformat, v4l2)}), changing to 0x{target_pixfmt:08x} ({get_v4l2_key_name(target_pixfmt, v4l2)})")
             fmt.fmt.pix.pixelformat = target_pixfmt
             try:
                 ret = fcntl.ioctl(self.vd, v4l2.VIDIOC_S_FMT, fmt)
-                print(f"Pixel format set to 0x{target_pixfmt:08x}")
+                print(f"Pixel format set to 0x{target_pixfmt:08x} ({get_v4l2_key_name(target_pixfmt, v4l2)})")
             except Exception as e:
-                print(f"Failed to set pixel format to 0x{target_pixfmt:08x}:", e)
+                print(f"Failed to set pixel format to 0x{target_pixfmt:08x} ({get_v4l2_key_name(target_pixfmt, v4l2)}):", e)
                 ''' Revert to actual settings if failed '''
                 ret = fcntl.ioctl(self.vd, v4l2.VIDIOC_G_FMT, fmt)
         else:
-            print(f"Current pixel format is already 0x{target_pixfmt:08x}, no need to update")
+            print(f"Current pixel format is already 0x{target_pixfmt:08x} ({get_v4l2_key_name(target_pixfmt, v4l2)}), no need to update")
 
     def get_pixfmt_cfg(self):
-        ret, pixfmt = self.get_pixelformat()
-        self.set_pixelformat()
-
-        print("\nV4L2:")
-
         # 初始化默认配置为 AUTO_CONVERT_TO_RGB
         chosen_config = ArduCamUtilities.AUTO_CONVERT_TO_RGB
         chosen_pixfmt = None
+        print("\nV4L2:")
+
+        # 显示目前的相机像素格式
+        ret, pixfmt = self.get_current_pixelformat()
+        print(f"The camera's current pixel format: 0x{pixfmt:08x} ({get_v4l2_key_name(pixfmt, v4l2)})")
 
         # 列出所有相机支持的像素格式
         print("The camera supported pixel formats: ")
-        camera_supported_formats = self.get_pixelformats()
+        camera_supported_formats = self.get_camera_supported_pixelformats()
         for element in camera_supported_formats:
-            print(f"{element['index']}: {element['description']} (pixelformat: 0x{element['pixelformat']:08x})")
+            print(f"\t{element['index']}: {element['description']} (pixelformat: 0x{element['pixelformat']:08x})")
 
         # 列出所有程序支持的像素格式，然后让用户选择
-        print("The program supported pixel formats: ")
+        print("Detecting program supported pixel formats...")
         # 检查当前像素格式是否在 pixfmt_map_raw8 中
+        ret, pixfmt = self.get_current_pixelformat()
         pf = ArduCamUtilities.pixfmt_map_raw8.get(pixfmt, None)
         if pf is not None:
+            print("Found matched conversion config in raw8 mappings.")
             chosen_config = pf
         else:
-            # 枚举所有支持的像素格式并收集匹配的配置
-            fmtdesc = v4l2.v4l2_fmtdesc()
-            fmtdesc.index = 0
-            fmtdesc.type = v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE
-
             matches = []
-            while True:
-                try:
-                    fcntl.ioctl(self.vd, v4l2.VIDIOC_ENUM_FMT, fmtdesc)
-                    # 检查当前枚举的像素格式是否在 pixfmt_map 中
-                    pixfmt_config = self.pixfmt_map.get(fmtdesc.pixelformat, None)
-                    if pixfmt_config is not None:
-                        matches.append({
-                            "index": fmtdesc.index,
-                            "pixelformat": fmtdesc.pixelformat,
-                            "description": fmtdesc.description,
-                            "config": pixfmt_config
-                        })
-                    fmtdesc.index += 1
-                except Exception as e:
-                    break  # 枚举完成或发生错误，退出循环
+            for element in camera_supported_formats:
+                pixfmt_config = self.pixfmt_map.get(element["pixelformat"], None)
+                if pixfmt_config is not None:
+                    matches.append({
+                        "index": element["index"],
+                        "pixelformat": element["pixelformat"],
+                        "description": element["description"],
+                        "config": pixfmt_config
+                    })
 
             if matches:
-                print("找到多个程序支持的像素格式配置：")
+                print("Found following program supported pixel format configs:")
                 for idx, match in enumerate(matches):
                     pixfmt_hex = f"0x{match['pixelformat']:08X}"
-                    print(f"{idx}: {match['description']} (pixelformat: {pixfmt_hex})")
+                    print(f"\t{idx}: {match['description']} (pixelformat: {pixfmt_hex})")
 
                 while True:
                     try:
@@ -172,7 +163,7 @@ class ArduCamUtilities(ArduCamControlUtilities):
         # 在函数末尾统一返回选择的配置
         return chosen_config
 
-    def get_pixelformats(self):
+    def get_camera_supported_pixelformats(self):
         supported_formats = []
         fmtdesc = v4l2.v4l2_fmtdesc()
         fmtdesc.index = 0
